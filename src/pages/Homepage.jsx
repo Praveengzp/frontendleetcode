@@ -111,6 +111,12 @@ function Homepage() {
 
         {/* Problems List */}
         <div className="grid gap-4">
+          {filteredProblems.length === 0 && (
+            <div className="text-center py-16 text-base-content/70">
+              No problems available yet.
+            </div>
+          )}
+
           {filteredProblems.map(problem => (
             <div key={problem._id} className="card bg-base-100 shadow-xl">
               <div className="card-body">

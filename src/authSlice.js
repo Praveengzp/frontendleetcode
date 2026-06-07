@@ -1,14 +1,52 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import axiosClient from './utils/axiosClient'
 
+const saveAuthToken = (token) => {
+  if (!token) {
+    throw new Error('Token not received from server');
+  }
+
+  localStorage.setItem('token', token);
+};
+
+const getTokenFromResponse = (data) => {
+  return data?.token || data?.authToken || data?.accessToken || data?.data?.token;
+};
+
+const getUserFromResponse = (data) => {
+  return data?.user || data?.data?.user;
+};
+
+const completeAuth = async (responseData) => {
+  const token = getTokenFromResponse(responseData);
+  const user = getUserFromResponse(responseData);
+
+  if (token) {
+    saveAuthToken(token);
+    return user;
+  }
+
+  if (user) {
+    const { data } = await axiosClient.get('/user/check');
+    return data.user || user;
+  }
+
+  throw new Error('Token not received from server');
+};
+
+const getErrorMessage = (error) => {
+  return error.response?.data?.message || error.response?.data || error.message || 'Something went wrong';
+};
+
 export const registerUser = createAsyncThunk(
   'auth/register',
   async (userData, { rejectWithValue }) => {
     try {
-    const response =  await axiosClient.post('/user/register', userData);
-    return response.data.user;
+      const response = await axiosClient.post('/user/register', userData);
+      return await completeAuth(response.data);
     } catch (error) {
-      return rejectWithValue(error);
+      localStorage.removeItem('token');
+      return rejectWithValue(getErrorMessage(error));
     }
   }
 );
@@ -19,9 +57,10 @@ export const loginUser = createAsyncThunk(
   async (credentials, { rejectWithValue }) => {
     try {
       const response = await axiosClient.post('/user/login', credentials);
-      return response.data.user;
+      return await completeAuth(response.data);
     } catch (error) {
-      return rejectWithValue(error);
+      localStorage.removeItem('token');
+      return rejectWithValue(getErrorMessage(error));
     }
   }
 );
@@ -34,9 +73,10 @@ export const checkAuth = createAsyncThunk(
       return data.user;
     } catch (error) {
       if (error.response?.status === 401) {
+        localStorage.removeItem('token');
         return rejectWithValue(null); // Special case for no session
       }
-      return rejectWithValue(error);
+      return rejectWithValue(getErrorMessage(error));
     }
   }
 );
@@ -46,9 +86,11 @@ export const logoutUser = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       await axiosClient.post('/user/logout');
+      localStorage.removeItem('token');
       return null;
     } catch (error) {
-      return rejectWithValue(error);
+      localStorage.removeItem('token');
+      return rejectWithValue(getErrorMessage(error));
     }
   }
 );
@@ -77,7 +119,7 @@ const authSlice = createSlice({
       })
       .addCase(registerUser.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload?.message || 'Something went wrong';
+        state.error = action.payload || 'Something went wrong';
         state.isAuthenticated = false;
         state.user = null;
       })
@@ -94,7 +136,7 @@ const authSlice = createSlice({
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload?.message || 'Something went wrong';
+        state.error = action.payload || 'Something went wrong';
         state.isAuthenticated = false;
         state.user = null;
       })
@@ -111,7 +153,7 @@ const authSlice = createSlice({
       })
       .addCase(checkAuth.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload?.message || 'Something went wrong';
+        state.error = action.payload || null;
         state.isAuthenticated = false;
         state.user = null;
       })
@@ -129,7 +171,7 @@ const authSlice = createSlice({
       })
       .addCase(logoutUser.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload?.message || 'Something went wrong';
+        state.error = action.payload || 'Something went wrong';
         state.isAuthenticated = false;
         state.user = null;
       });
